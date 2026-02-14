@@ -33,7 +33,13 @@
  */
 
 import type { Static, TSchema } from "@sinclair/typebox";
-import { type ExtractionOptions, type ExtractionResult, extractJson, filterChainOfThought, hasChainOfThought } from "./json-extractor.js";
+import {
+	type ExtractionOptions,
+	type ExtractionResult,
+	extractJson,
+	filterChainOfThought,
+	hasChainOfThought,
+} from "./json-extractor.js";
 import {
 	createJsonSchemaPrompt,
 	createPromptWithSchema as createPrompt,
