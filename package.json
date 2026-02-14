@@ -1,0 +1,79 @@
+{
+  "name": "baml-sap-ts",
+  "version": "0.1.0",
+  "description": "TypeScript implementation of BAML's Schema-Aligned Parsing (SAP) algorithm using TypeBox",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      },
+      "require": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      }
+    }
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE",
+    "CHANGELOG.md"
+  ],
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "build:examples": "tsc -p tsconfig.examples.json",
+    "build:tests": "tsc -p tsconfig.test.json",
+    "clean": "rm -rf dist",
+    "prebuild": "npm run clean",
+    "test": "npm run build:tests && node --test dist/tests/*.js",
+    "example": "npm run build:examples && node dist/examples/basic-usage.js",
+    "lint": "biome lint src tests examples",
+    "lint:fix": "biome lint --write src tests examples",
+    "format": "biome format src tests examples",
+    "format:fix": "biome format --write src tests examples",
+    "check": "biome check src tests examples",
+    "check:fix": "biome check --write src tests examples",
+    "typecheck": "tsc --noEmit",
+    "prepublishOnly": "npm run build"
+  },
+  "keywords": [
+    "baml",
+    "sap",
+    "schema-aligned-parsing",
+    "llm",
+    "structured-output",
+    "typebox",
+    "json-extraction",
+    "prompt-engineering",
+    "ai",
+    "openai",
+    "anthropic"
+  ],
+  "author": "aiamblichus <aiamblichus@fastmail.com>",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/aiamblichus/baml-sap-ts.git"
+  },
+  "bugs": {
+    "url": "https://github.com/aiamblichus/baml-sap-ts/issues"
+  },
+  "homepage": "https://github.com/aiamblichus/baml-sap-ts#readme",
+  "dependencies": {
+    "@sinclair/typebox": "^0.34.0"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^2.3.5",
+    "@types/node": "^20.0.0",
+    "typescript": "^5.3.0"
+  },
+  "peerDependencies": {
+    "@sinclair/typebox": "^0.32.0 || ^0.33.0 || ^0.34.0"
+  }
+}

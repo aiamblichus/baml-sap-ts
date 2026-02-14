@@ -1,0 +1,44 @@
+# Source files
+src/
+
+# Tests (don't publish tests)
+tests/
+dist/tests/
+
+# Examples (don't publish examples)
+examples/
+dist/examples/
+
+# Config files
+biome.json
+tsconfig.json
+.gitignore
+
+# Development
+node_modules/
+*.log
+.DS_Store
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# Coverage
+coverage/
+.nyc_output/
+
+# Git
+.git/
+.gitattributes
+
+# CI
+.github/
+
+# Package files
+*.tgz

@@ -1,0 +1,304 @@
+/**
+ * Core tests for BAML SAP TypeScript
+ */
+
+import assert from "node:assert";
+import { describe, it } from "node:test";
+import { Type } from "@sinclair/typebox";
+import {
+	coerceValue,
+	createPromptWithSchema,
+	extractJson,
+	filterChainOfThought,
+	hasChainOfThought,
+	parseResponse,
+	renderSchema,
+} from "../src/index.js";
+
+describe("Schema Renderer", () => {
+	it("should render a simple object schema", () => {
+		const schema = Type.Object({
+			name: Type.String(),
+			age: Type.Number(),
+		});
+
+		const rendered = renderSchema(schema);
+		assert(rendered.includes("name"));
+		assert(rendered.includes("age"));
+		assert(rendered.includes("string"));
+		assert(rendered.includes("number"));
+	});
+
+	it("should render a union schema", () => {
+		const schema = Type.Union([Type.Literal("a"), Type.Literal("b")]);
+
+		const rendered = renderSchema(schema);
+		assert(rendered.includes("a") || rendered.includes("one of"));
+	});
+
+	it("should create a prompt with schema", () => {
+		const schema = Type.Object({
+			result: Type.Boolean(),
+		});
+
+		const prompt = createPromptWithSchema("Test prompt", schema);
+		assert(prompt.includes("Test prompt"));
+		assert(prompt.includes("Respond with a JSON"));
+		assert(prompt.includes("boolean"));
+	});
+});
+
+describe("JSON Extractor", () => {
+	it("should extract simple JSON", () => {
+		const json = '{"name": "test", "value": 123}';
+		const result = extractJson(json);
+
+		assert.deepStrictEqual(result.value, { name: "test", value: 123 });
+	});
+
+	it("should extract JSON from markdown code block", () => {
+		const markdown = '```json\n{"key": "value"}\n```';
+		const result = extractJson(markdown);
+
+		assert.deepStrictEqual(result.value, { key: "value" });
+		assert.strictEqual(result.fromMarkdown, true);
+	});
+
+	it("should fix trailing commas", () => {
+		const malformed = '{"a": 1, "b": 2,}';
+		const result = extractJson(malformed);
+
+		assert.deepStrictEqual(result.value, { a: 1, b: 2 });
+		// Fixes may or may not be tracked depending on code path
+		// The important thing is the value was extracted correctly
+	});
+
+	it("should return string when JSON is invalid and allowAsString is true", () => {
+		const notJson = "This is just plain text";
+		const result = extractJson(notJson);
+
+		assert.strictEqual(result.value, notJson);
+	});
+});
+
+describe("Type Coercer", () => {
+	it("should coerce string to number", () => {
+		const schema = Type.Number();
+		const result = coerceValue("42", schema, { trackCoercions: true });
+
+		assert.strictEqual(result.value, 42);
+		assert(result.coercions?.some((c) => c.includes("parsed string")));
+	});
+
+	it("should coerce number to string", () => {
+		const schema = Type.String();
+		const result = coerceValue(123, schema);
+
+		assert.strictEqual(result.value, "123");
+	});
+
+	it("should coerce missing optional fields", () => {
+		const schema = Type.Object({
+			required: Type.String(),
+			optional: Type.Optional(Type.String()),
+		});
+
+		const result = coerceValue({ required: "test" }, schema);
+
+		assert.strictEqual(result.value.required, "test");
+		assert.strictEqual(result.value.optional, undefined);
+	});
+
+	it("should handle union types", () => {
+		const schema = Type.Union([Type.String(), Type.Number()]);
+
+		const result1 = coerceValue("hello", schema);
+		assert.strictEqual(result1.value, "hello");
+
+		const result2 = coerceValue(42, schema);
+		assert.strictEqual(result2.value, 42);
+	});
+
+	it("should validate string constraints", () => {
+		const schema = Type.String({ minLength: 3, maxLength: 10 });
+
+		const result1 = coerceValue("hi", schema);
+		assert(!result1.success);
+		assert(result1.errors.some((e) => e.message.includes("too short")));
+
+		const result2 = coerceValue("hello world!!!", schema);
+		assert(!result2.success);
+		assert(result2.errors.some((e) => e.message.includes("too long")));
+	});
+});
+
+describe("Parse Response (Integration)", () => {
+	it("should parse a simple JSON response", () => {
+		const schema = Type.Object({
+			name: Type.String(),
+			count: Type.Integer(),
+		});
+
+		const response = '{"name": "test", "count": 5}';
+		const result = parseResponse(response, schema);
+
+		assert.strictEqual(result.success, true);
+		assert.deepStrictEqual(result.value, { name: "test", count: 5 });
+		assert.strictEqual(result.errors.length, 0);
+	});
+
+	it("should parse markdown-wrapped JSON", () => {
+		const schema = Type.Object({
+			value: Type.Boolean(),
+		});
+
+		const response = '```json\n{"value": true}\n```';
+		const result = parseResponse(response, schema);
+
+		assert.strictEqual(result.success, true);
+		assert.strictEqual(result.value.value, true);
+		assert.strictEqual(result.meta.fromMarkdown, true);
+	});
+
+	it("should filter chain-of-thought and parse", () => {
+		const schema = Type.Object({
+			answer: Type.String(),
+		});
+
+		const response = `Let me think... 
+Step 1: Analyze
+Step 2: Decide
+
+Therefore the output JSON is:
+\`\`\`json
+{"answer": "hello"}
+\`\`\``;
+
+		const result = parseResponse(response, schema);
+
+		assert.strictEqual(result.success, true);
+		assert.strictEqual(result.value.answer, "hello");
+		assert.strictEqual(result.meta.chainOfThoughtFiltered, true);
+	});
+
+	it("should handle partial responses", () => {
+		const schema = Type.Object({
+			items: Type.Array(Type.String()),
+		});
+
+		const response = '{"items": ["a", "b"'; // incomplete
+		const result = parseResponse(response, schema, { allowPartials: true });
+
+		// Should succeed with partial flag
+		assert.strictEqual(result.isPartial, true);
+	});
+
+	it("should report errors for invalid data", () => {
+		const schema = Type.Object({
+			age: Type.Number({ minimum: 0 }),
+		});
+
+		const response = '{"age": -5}';
+		const result = parseResponse(response, schema);
+
+		assert.strictEqual(result.success, false);
+		assert(result.errors.length > 0);
+	});
+
+	it("should coerce types when strict is false", () => {
+		const schema = Type.Object({
+			count: Type.Integer(),
+		});
+
+		// String number should be coerced
+		const response = '{"count": "42"}';
+		const result = parseResponse(response, schema);
+
+		assert.strictEqual(result.success, true);
+		assert.strictEqual(result.value.count, 42);
+	});
+});
+
+describe("Chain-of-Thought Detection", () => {
+	it("should detect chain-of-thought text", () => {
+		const reasoning = "Let me think step by step. First, I need to...";
+		assert.strictEqual(hasChainOfThought(reasoning), true);
+
+		const simple = '{"answer": "yes"}';
+		assert.strictEqual(hasChainOfThought(simple), false);
+	});
+
+	it("should filter chain-of-thought", () => {
+		const text = `Let me think...
+    
+    Therefore the output JSON is:
+    {"result": "success"}`;
+
+		const filtered = filterChainOfThought(text);
+		assert(filtered.includes("result"));
+		assert(!filtered.includes("Let me think"));
+	});
+});
+
+describe("Complex Schemas", () => {
+	it("should handle nested objects", () => {
+		const schema = Type.Object({
+			user: Type.Object({
+				profile: Type.Object({
+					name: Type.String(),
+				}),
+			}),
+		});
+
+		const response = '{"user": {"profile": {"name": "Alice"}}}';
+		const result = parseResponse(response, schema);
+
+		assert.strictEqual(result.success, true);
+		assert.strictEqual(result.value.user.profile.name, "Alice");
+	});
+
+	it("should handle arrays", () => {
+		const schema = Type.Object({
+			items: Type.Array(
+				Type.Object({
+					id: Type.Integer(),
+					name: Type.String(),
+				}),
+			),
+		});
+
+		const response = '{"items": [{"id": 1, "name": "a"}, {"id": 2, "name": "b"}]}';
+		const result = parseResponse(response, schema);
+
+		assert.strictEqual(result.success, true);
+		assert.strictEqual(result.value.items.length, 2);
+	});
+
+	it("should handle enums", () => {
+		const StatusEnum = Type.Enum({
+			PENDING: "PENDING",
+			DONE: "DONE",
+		});
+
+		const schema = Type.Object({
+			status: StatusEnum,
+		});
+
+		const response = '{"status": "PENDING"}';
+		const result = parseResponse(response, schema);
+
+		assert.strictEqual(result.success, true);
+		assert.strictEqual(result.value.status, "PENDING");
+	});
+
+	it("should handle records/maps", () => {
+		const schema = Type.Record(Type.String(), Type.Number());
+
+		const response = '{"a": 1, "b": 2}';
+		const result = parseResponse(response, schema);
+
+		assert.strictEqual(result.success, true);
+		assert.strictEqual(result.value.a, 1);
+		assert.strictEqual(result.value.b, 2);
+	});
+});
