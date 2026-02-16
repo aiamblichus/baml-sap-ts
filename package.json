@@ -40,7 +40,12 @@
     "check": "biome check src tests examples",
     "check:fix": "biome check --write src tests examples",
     "typecheck": "tsc --noEmit",
-    "prepublishOnly": "npm run build"
+    "prepublishOnly": "npm run build",
+    "preversion": "npm run check && npm test",
+    "release:patch": "npm version patch && git push --follow-tags && npm publish",
+    "release:minor": "npm version minor && git push --follow-tags && npm publish",
+    "release:major": "npm version major && git push --follow-tags && npm publish",
+    "release:dry-run": "npm pack --dry-run"
   },
   "keywords": [
     "baml",

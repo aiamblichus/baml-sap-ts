@@ -25,7 +25,7 @@ export interface ExtractionOptions {
 	maxDepth?: number;
 }
 
-const defaultOptions: ExtractionOptions = {
+const defaultOptions: Required<ExtractionOptions> = {
 	allowMarkdownJson: true,
 	allowFixes: true,
 	allowAsString: true,
@@ -84,65 +84,91 @@ export function extractJson(
 	isDone: boolean = true,
 	depth: number = 0,
 ): ExtractionResult {
-	const opts = { ...defaultOptions, ...options };
-	const originalText = text;
-	const preprocessingFixes: string[] = [];
-	let workingText = text;
-
-	if (opts.normalizeUnicodeQuotes) {
-		const normalized = normalizeUnicodeQuotes(workingText);
-		if (normalized !== workingText) {
-			preprocessingFixes.push("normalized_unicode_quotes");
-			workingText = normalized;
-		}
-	}
+	const opts: Required<ExtractionOptions> = {
+		...defaultOptions,
+		...options,
+		allowMarkdownJson: options.allowMarkdownJson ?? defaultOptions.allowMarkdownJson,
+		allowFixes: options.allowFixes ?? defaultOptions.allowFixes,
+		allowAsString: options.allowAsString ?? defaultOptions.allowAsString,
+		findAllJsonObjects: options.findAllJsonObjects ?? defaultOptions.findAllJsonObjects,
+		normalizeUnicodeQuotes: options.normalizeUnicodeQuotes ?? defaultOptions.normalizeUnicodeQuotes,
+		maxDepth: options.maxDepth ?? defaultOptions.maxDepth,
+	};
 
 	// Depth limit check
 	if (depth > opts.maxDepth!) {
 		throw new Error("Depth limit reached. Likely a circular reference.");
 	}
 
-	// Try direct JSON parsing first
-	const directResult = tryParseDirect(workingText, isDone);
-	if (directResult) {
-		return withPreprocessingFixes(directResult, preprocessingFixes, originalText);
-	}
+	const direct = tryExtractJsonCore(text, opts, isDone, depth);
+	if (direct) return direct;
 
-	// Try markdown extraction
-	if (opts.allowMarkdownJson) {
-		const markdownResult = tryExtractFromMarkdown(workingText, opts, isDone, depth + 1);
-		if (markdownResult) {
-			return withPreprocessingFixes(markdownResult, preprocessingFixes, originalText);
-		}
-	}
-
-	// Try finding all JSON objects
-	if (opts.findAllJsonObjects) {
-		const multiResult = tryExtractMultipleJson(workingText, opts, isDone, depth + 1);
-		if (multiResult) {
-			return withPreprocessingFixes(multiResult, preprocessingFixes, originalText);
-		}
-	}
-
-	// Try fixing malformed JSON
-	if (opts.allowFixes) {
-		const fixedResult = tryFixJson(workingText, opts, isDone, depth + 1);
-		if (fixedResult) {
-			return withPreprocessingFixes(fixedResult, preprocessingFixes, originalText);
+	// Fallback pass: normalize smart quotes only if the original text could not be parsed.
+	// This avoids corrupting already-valid JSON strings that merely contain typographic quotes in values.
+	if (opts.normalizeUnicodeQuotes) {
+		const normalized = normalizeUnicodeQuotes(text);
+		if (normalized !== text) {
+			const normalizedResult = tryExtractJsonCore(
+				normalized,
+				{ ...opts, normalizeUnicodeQuotes: false, allowAsString: false },
+				isDone,
+				depth,
+			);
+			if (normalizedResult) {
+				return withPreprocessingFixes(normalizedResult, ["normalized_unicode_quotes"], text);
+			}
 		}
 	}
 
 	// Return as string if allowed
 	if (opts.allowAsString) {
 		return {
-			value: originalText,
-			raw: originalText,
-			fixes: preprocessingFixes.length > 0 ? [...preprocessingFixes] : undefined,
+			value: text,
+			raw: text,
 			isPartial: !isDone,
 		};
 	}
 
 	throw new Error("Failed to extract JSON from response");
+}
+
+function tryExtractJsonCore(
+	text: string,
+	opts: Required<ExtractionOptions>,
+	isDone: boolean,
+	depth: number,
+): ExtractionResult | null {
+	// Try direct JSON parsing first
+	const directResult = tryParseDirect(text, isDone);
+	if (directResult) {
+		return directResult;
+	}
+
+	// Try markdown extraction
+	if (opts.allowMarkdownJson) {
+		const markdownResult = tryExtractFromMarkdown(text, opts, isDone, depth + 1);
+		if (markdownResult) {
+			return markdownResult;
+		}
+	}
+
+	// Try finding all JSON objects
+	if (opts.findAllJsonObjects) {
+		const multiResult = tryExtractMultipleJson(text, opts, isDone, depth + 1);
+		if (multiResult) {
+			return multiResult;
+		}
+	}
+
+	// Try fixing malformed JSON
+	if (opts.allowFixes) {
+		const fixedResult = tryFixJson(text, opts, isDone, depth + 1);
+		if (fixedResult) {
+			return fixedResult;
+		}
+	}
+
+	return null;
 }
 
 /**

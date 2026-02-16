@@ -87,6 +87,13 @@ describe("JSON Extractor", () => {
 		assert.deepStrictEqual(result.value, { action: "diagnostics", file: "x.ts" });
 		assert(result.fixes?.includes("normalized_unicode_quotes"));
 	});
+
+	it("should not break valid JSON that contains smart quotes in string values", () => {
+		const json = '{"command":"echo {“action”: “diagnostics”}"}';
+		const result = extractJson(json);
+
+		assert.deepStrictEqual(result.value, { command: "echo {“action”: “diagnostics”}" });
+	});
 });
 
 describe("Type Coercer", () => {

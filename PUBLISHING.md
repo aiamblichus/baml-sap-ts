@@ -24,11 +24,29 @@ npm pack
 
 ## Step 3: Publish
 
+### Semi-automated release (recommended)
+
+These scripts run checks/tests, bump version, create tag, push commits+tags, and publish:
+
+```bash
+npm run release:patch  # 0.1.0 -> 0.1.1
+npm run release:minor  # 0.1.1 -> 0.2.0
+npm run release:major  # 0.2.0 -> 1.0.0
+```
+
+Optional preview first:
+
+```bash
+npm run release:dry-run
+```
+
+### Manual publish (fallback)
+
 ```bash
 # Publish (for first time)
 npm publish --access public
 
-# Or publish a new version (after updating version in package.json)
+# Or publish a new version manually
 npm version patch  # or minor, or major
 npm publish
 ```
