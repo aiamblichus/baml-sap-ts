@@ -23,6 +23,7 @@ SAP is BAML's algorithm for reliably extracting structured outputs from LLMs:
 
 - ✅ **Markdown code block extraction** - Extract JSON from ` ```json ` blocks
 - ✅ **JSON fixing** - Auto-fix trailing commas, missing quotes, etc.
+- ✅ **Unicode quote normalization** - Normalize smart quotes (`“ ” ‘ ’`) before parsing
 - ✅ **Chain-of-thought filtering** - Remove reasoning text before JSON
 - ✅ **Union type matching** - Automatically select best matching variant
 - ✅ **Optional fields with defaults** - Handle missing fields gracefully
@@ -189,6 +190,17 @@ console.log(result.meta.fixes); // ['applied_auto_fixes']
 console.log(result.value); // { name: "test", age: 25 }
 ```
 
+### Smart/Unicode Quotes
+
+Normalizes typographic quotes automatically:
+
+```typescript
+const response = '{“name”: “test”, “age”: 25}';
+const result = parseResponse(response, schema);
+console.log(result.meta.fixes); // ['normalized_unicode_quotes']
+console.log(result.value); // { name: "test", age: 25 }
+```
+
 ### Markdown Code Blocks
 
 Extracts JSON from markdown:
@@ -253,6 +265,7 @@ interface ParseOptions {
   allowFixes?: boolean; // Fix malformed JSON (default: true)
   allowAsString?: boolean; // Return string if all fails (default: true)
   findAllJsonObjects?: boolean; // Find multiple JSON objects (default: true)
+  normalizeUnicodeQuotes?: boolean; // Normalize “ ” ‘ ’ to standard quotes (default: true)
   maxDepth?: number; // Max parsing depth (default: 100)
 
   // Coercion options

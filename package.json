@@ -1,6 +1,6 @@
 {
   "name": "baml-sap-ts",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "TypeScript implementation of BAML's Schema-Aligned Parsing (SAP) algorithm using TypeBox",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",

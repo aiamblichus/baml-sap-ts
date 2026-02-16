@@ -19,6 +19,8 @@ export interface ExtractionOptions {
 	allowAsString?: boolean;
 	/** Find all JSON objects in the text */
 	findAllJsonObjects?: boolean;
+	/** Normalize typographic Unicode quotes (e.g. “ ” ‘ ’) before parsing */
+	normalizeUnicodeQuotes?: boolean;
 	/** Maximum recursion depth for nested parsing */
 	maxDepth?: number;
 }
@@ -28,6 +30,7 @@ const defaultOptions: ExtractionOptions = {
 	allowFixes: true,
 	allowAsString: true,
 	findAllJsonObjects: true,
+	normalizeUnicodeQuotes: true,
 	maxDepth: 100,
 };
 
@@ -47,6 +50,31 @@ export interface ExtractionResult {
 	isPartial?: boolean;
 }
 
+function normalizeUnicodeQuotes(text: string): string {
+	return text.replace(/[\u201C\u201D]/g, '"').replace(/[\u2018\u2019]/g, "'");
+}
+
+function withPreprocessingFixes(
+	result: ExtractionResult,
+	preprocessingFixes: string[],
+	originalRawText: string,
+): ExtractionResult {
+	if (preprocessingFixes.length === 0) {
+		if (result.raw === originalRawText) return result;
+		return {
+			...result,
+			raw: originalRawText,
+		};
+	}
+
+	const mergedFixes = [...new Set([...(result.fixes ?? []), ...preprocessingFixes])];
+	return {
+		...result,
+		raw: originalRawText,
+		fixes: mergedFixes,
+	};
+}
+
 /**
  * Extract JSON from an LLM response string
  */
@@ -57,6 +85,17 @@ export function extractJson(
 	depth: number = 0,
 ): ExtractionResult {
 	const opts = { ...defaultOptions, ...options };
+	const originalText = text;
+	const preprocessingFixes: string[] = [];
+	let workingText = text;
+
+	if (opts.normalizeUnicodeQuotes) {
+		const normalized = normalizeUnicodeQuotes(workingText);
+		if (normalized !== workingText) {
+			preprocessingFixes.push("normalized_unicode_quotes");
+			workingText = normalized;
+		}
+	}
 
 	// Depth limit check
 	if (depth > opts.maxDepth!) {
@@ -64,40 +103,41 @@ export function extractJson(
 	}
 
 	// Try direct JSON parsing first
-	const directResult = tryParseDirect(text, isDone);
+	const directResult = tryParseDirect(workingText, isDone);
 	if (directResult) {
-		return directResult;
+		return withPreprocessingFixes(directResult, preprocessingFixes, originalText);
 	}
 
 	// Try markdown extraction
 	if (opts.allowMarkdownJson) {
-		const markdownResult = tryExtractFromMarkdown(text, opts, isDone, depth + 1);
+		const markdownResult = tryExtractFromMarkdown(workingText, opts, isDone, depth + 1);
 		if (markdownResult) {
-			return markdownResult;
+			return withPreprocessingFixes(markdownResult, preprocessingFixes, originalText);
 		}
 	}
 
 	// Try finding all JSON objects
 	if (opts.findAllJsonObjects) {
-		const multiResult = tryExtractMultipleJson(text, opts, isDone, depth + 1);
+		const multiResult = tryExtractMultipleJson(workingText, opts, isDone, depth + 1);
 		if (multiResult) {
-			return multiResult;
+			return withPreprocessingFixes(multiResult, preprocessingFixes, originalText);
 		}
 	}
 
 	// Try fixing malformed JSON
 	if (opts.allowFixes) {
-		const fixedResult = tryFixJson(text, opts, isDone, depth + 1);
+		const fixedResult = tryFixJson(workingText, opts, isDone, depth + 1);
 		if (fixedResult) {
-			return fixedResult;
+			return withPreprocessingFixes(fixedResult, preprocessingFixes, originalText);
 		}
 	}
 
 	// Return as string if allowed
 	if (opts.allowAsString) {
 		return {
-			value: text,
-			raw: text,
+			value: originalText,
+			raw: originalText,
+			fixes: preprocessingFixes.length > 0 ? [...preprocessingFixes] : undefined,
 			isPartial: !isDone,
 		};
 	}

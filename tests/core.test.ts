@@ -79,6 +79,14 @@ describe("JSON Extractor", () => {
 
 		assert.strictEqual(result.value, notJson);
 	});
+
+	it("should normalize Unicode smart quotes in JSON", () => {
+		const smartQuoted = "{“action”: “diagnostics”, “file”: “x.ts”}";
+		const result = extractJson(smartQuoted);
+
+		assert.deepStrictEqual(result.value, { action: "diagnostics", file: "x.ts" });
+		assert(result.fixes?.includes("normalized_unicode_quotes"));
+	});
 });
 
 describe("Type Coercer", () => {
@@ -216,6 +224,20 @@ Therefore the output JSON is:
 
 		assert.strictEqual(result.success, true);
 		assert.strictEqual(result.value.count, 42);
+	});
+
+	it("should parse smart-quoted JSON in markdown blocks", () => {
+		const schema = Type.Object({
+			action: Type.String(),
+			file: Type.String(),
+		});
+
+		const response = "```json\n{“action”: “diagnostics”, “file”: “x.ts”}\n```";
+		const result = parseResponse(response, schema);
+
+		assert.strictEqual(result.success, true);
+		assert.deepStrictEqual(result.value, { action: "diagnostics", file: "x.ts" });
+		assert(result.meta.fixes?.includes("normalized_unicode_quotes"));
 	});
 });
 
